@@ -40,3 +40,29 @@ def vulnerable(response):
 def sql_injection_scan(url):
     forms = get_forms(url)
     print(f"[+] Detected { len(forms)} forms on {url}. ")
+
+    for form in forms:
+        details = form_details(form)
+
+    for i in "\"'":
+        data = {}
+        for input_tag in details["inputs"]:
+            if input_tag["type"] == "hidden" or input_tag["value"]:
+                data[input_tag['name']] = input_tag["value"] + i
+            elif input_tag["type"] != "submit":
+                data[input_tag['name']] = f"test{i}"
+
+        print(url)
+        form_details(form)
+
+        if details["method"] == "post":
+            res = s.post(url, data=data)
+        elif details["method"] == "get":
+            res = s.get(url, params=data)
+        if vulnerable(res):
+            print("SQL injection attack vulnerability in link: ", url)
+            break
+
+if __name__ == "__main__":
+    urlToBeChecked= "Enter website here"
+    sql_injection_scan(urlToBeChecked)
