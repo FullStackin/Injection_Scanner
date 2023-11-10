@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Security Scanner</title>
+    <!-- Include the Tailwind CSS stylesheet -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+
+    <div class="flex space-x-4">
+
+        <!-- Original Box -->
+        <div class="bg-white p-8 rounded shadow-md w-full sm:w-96 text-center">
+            <h1 class="text-2xl font-bold mb-4 text-gray-800">Web Security Scanner</h1>
+            <!-- Logo -->
+            <img src="{{ url_for('static', filename='picture.png') }}" alt="Logo" class="mb-4 h-35 w-auto mx-auto">
+            <form method="post" id="scanForm" class="space-y-4">
+                <label for="url" class="block text-sm font-bold text-gray-600">Enter Website URL Here:</label>
+                <input type="text" id="url" name="url" required
+                    class="w-full border border-gray-300 px-3 py-2 rounded-md focus:outline-none focus:border-blue-500">
+                <button type="button" id="startScan"
+                    class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:shadow-outline-blue active:bg-blue-800">
+                    Scan
+                </button>
+            </form>
+            <div id="loadingBar" class="mt-4 bg-blue-200 h-10 rounded-md overflow-hidden relative">
+                <div id="progress" class="bg-blue-500 h-full absolute left-0"></div>
+                <div id="progressText"
+                    class="text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    0%
+                </div>
+            </div>
+            <p id="scanStatus" class="mt-4 text-sm text-gray-600">Note: This tool is for educational purposes and not
+                meant
+                for harm.</p>
+        </div>
+
+        <!-- Results Box on the Right (Initially Hidden) -->
+        <div id="results" class="hidden bg-white p-8 rounded shadow-md w-full sm:w-96 text-center">
+            <!-- Add styling classes for the results box -->
+            <!-- You can customize these classes based on your design preferences -->
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Scan Results</h2>
+            <p class="text-gray-700" id="resultsText"></p>
+            <p class="text-center text-blue-500 hover:underline">
+                <a href="/">Scan Another Website</a>
+            </p>
+        </div>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

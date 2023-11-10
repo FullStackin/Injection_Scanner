@@ -103,9 +103,13 @@ def sql_injection_scan(url, session):
                 res = session.get(url, params=data)
 
             if vulnerable(res, url, payload):
+                vulnerability_details = {
+                    "type": "SQL Injection",
+                    "form_action": details["action"],
+                    "payload": payload
+                }
                 logging.warning(f"SQL injection attack vulnerability found with payload '{payload}'")
-            else:
-                logging.info(f"No SQL injection attack vulnerability detected with payload '{payload}'")
+                return vulnerability_details
 
         # SQL injection payload variations for URL parameter testing
         url_params = parse_qs(urlparse(url).query)
@@ -120,6 +124,7 @@ def sql_injection_scan(url, session):
                         logging.warning(f"SQL injection attack vulnerability found with payload '{payload}' in URL: {modified_url}")
                     else:
                         logging.info(f"No SQL injection attack vulnerability detected with payload '{payload}' in URL: {modified_url}")
+    return None  # Return None if no vulnerability is found
 
 def extract_links_from_page(url, session):
     """
@@ -164,7 +169,7 @@ vulnerable_data_file.close()
 
 if __name__ == "__main__":
     # Specify the starting URL to be checked for SQL injection vulnerability
-    startUrlToBeChecked = "https://www.learnandplaymontessori.com/"
+    startUrlToBeChecked = "ENTER URL HERE"
 
     # Create a session with headers to mimic a web browser
     with requests.Session() as session:
