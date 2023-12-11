@@ -110,8 +110,10 @@ def sql_injection_scan(url, session):
             data = {}
             for input_tag in details["inputs"]:
                 if input_tag["type"] == "hidden" or input_tag["value"]:
+                    # If the input has a value, attempt SQL injection on it
                     data[input_tag['name']] = input_tag["value"] + payload
                 elif input_tag["type"] != "submit":
+                    # If the input doesn't have a value, attempt SQL injection on a default "test" value
                     data[input_tag['name']] = f"test{payload}"
 
             logging.info(f"\nScanning {url}")
@@ -137,7 +139,8 @@ def sql_injection_scan(url, session):
         for param, values in url_params.items():
             for value in values:
                 for payload in payloads:
-                    modified_url = url.replace(f"{param}={value}", f"{param}={value}{payload}")
+                    # Handle parameterized queries by injecting into each parameter value
+                    modified_url = url.replace(f"{param}={value}", f"{param}={value + payload}")
                     res = session.get(modified_url)
 
                     if vulnerable(res, modified_url, payload):
@@ -145,6 +148,7 @@ def sql_injection_scan(url, session):
                     else:
                         logging.info(f"No SQL injection attack vulnerability detected with payload '{payload}' in URL: {modified_url}")
     return None  # Return None if no vulnerability is found
+
 
 def extract_links_from_page(url, session):
     """
@@ -179,8 +183,12 @@ def crawl_and_scan(start_url, session, depth=2, max_workers=5):
         sql_injection_scan(url, session)
 
         links = extract_links_from_page(url, session)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            executor.map(recursive_crawl_and_scan, links, [current_depth + 1] * len(links))
+        if links:
+            with ThreadPoolExecutor(max_workers=min(max_workers, len(links))) as executor:
+                futures = [executor.submit(recursive_crawl_and_scan, link, current_depth + 1) for link in links]
+                # Wait for all futures to complete
+                for future in futures:
+                    future.result()
 
     recursive_crawl_and_scan(start_url, 1)
 
